@@ -7,8 +7,9 @@ import {
   Route,
   Navigate,
 } from "react-router-dom";
-// import Login from "./Screens/Login";
+
 import Auth from "./Screens/Auth";
+import { checkAuth } from "./services/auth.service";
 import Register from "./Screens/Register";
 import TaskDashboard from "./Screens/TaskDashboard";
 import { Task } from "./types/index";
@@ -44,30 +45,14 @@ export default function App() {
   const [loading, setLoading] = useState(true); // ✅ New state to track loading
 
   const checkAuthentication = async () => {
-    try {
-      const response = await fetch(
-        "http://localhost:8000/api/auth/current-user",
-        {
-          method: "GET",
-          credentials: "include", // ✅ Sends HTTP-only cookies
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("User session restored:", data);
-        setLoggedUserEmail(await data?.data?.email);
-        setIsAuthenticated(true);
-      } else {
-        console.log("User not authenticated");
-        setIsAuthenticated(false);
-      }
-    } catch (error) {
-      console.error("Error checking authentication:", error);
+    const data = await checkAuth();
+    if (data) {
+      setLoggedUserEmail(data?.data?.email);
+      setIsAuthenticated(true);
+    } else {
       setIsAuthenticated(false);
-    } finally {
-      setLoading(false); // ✅ Stop loading after auth check completes
     }
+    setLoading(false);
   };
 
   useEffect(() => {
