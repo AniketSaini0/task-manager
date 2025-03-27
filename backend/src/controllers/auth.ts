@@ -4,21 +4,21 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import asyncHandler from "express-async-handler";
 import { Request, Response, NextFunction } from "express";
-import { PrismaClient, User } from "@prisma/client";
+// import { PrismaClient, User } from "@prisma/client";
+// const prisma = new PrismaClient();
 
-const prisma = new PrismaClient();
+import User, { IUser } from "../models/user.model"; // Import Mongoose User Model
+
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET as string;
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET as string;
 
 // **********************Generate Tokens***********************
 
-const generateAccessAndRefreshToken = async function (user: User) {
+const generateAccessAndRefreshToken = async function (user: IUser) {
   try {
-    // const user = await User.findById(userId);
-
     const accessToken = jwt.sign(
       {
-        userId: user.id,
+        userId: user._id, // Mongoose uses `_id`
         username: user.username,
         email: user.email,
       },
@@ -26,22 +26,19 @@ const generateAccessAndRefreshToken = async function (user: User) {
       { expiresIn: "1d" }
     );
 
-    const refreshToken = jwt.sign({ userId: user.id }, REFRESH_TOKEN_SECRET, {
+    const refreshToken = jwt.sign({ userId: user._id }, REFRESH_TOKEN_SECRET, {
       expiresIn: "2h",
     });
-    // strong the generated refreshToken to user but need to save the user after this.
-    user.refreshToken = refreshToken;
 
-    console.log("refresh token saved in DB");
-    // bypassing the default validation that is done by mongoDB
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken },
-    });
+    // Store refreshToken in the database
+    user.refreshToken = refreshToken;
+    await user.save(); // Save the updated user
+
+    console.log("✅ Refresh token saved in DB");
 
     return { accessToken, refreshToken };
   } catch (error) {
-    throw new Error(String(error));
+    throw new Error(`Error generating tokens: ${error}`);
   }
 };
 
@@ -55,82 +52,106 @@ export const refreshAccessToken = asyncHandler(
       throw new ApiError(406, "Refresh token required");
     }
 
-    // jwt.verify gives us back what ever we used inside jwt.sign for generated the token
-    // which in this case was the user._id (check in generateRefreshToken in user.models)
-    const decodedRefreshToken = jwt.verify(
-      incomingRefreshToken,
-      REFRESH_TOKEN_SECRET
-    ) as jwt.JwtPayload & { userId: number };
-    console.log("decoded refreshToken :", decodedRefreshToken);
+    try {
+      // Verify the refresh token
+      const decodedRefreshToken = jwt.verify(
+        incomingRefreshToken,
+        REFRESH_TOKEN_SECRET
+      ) as jwt.JwtPayload & { userId: string }; // MongoDB uses string `_id`
+      console.log("decoded refreshToken :", decodedRefreshToken);
 
-    const user = await prisma.user.findUnique({
-      where: { id: decodedRefreshToken?.userId },
-    });
+      // Find user by ID in MongoDB
+      const user = await User.findById(decodedRefreshToken?.userId);
+      console.log("decodedRefreshToken id: ", decodedRefreshToken.userId);
 
-    console.log("decodedRefreshToken id: ", decodedRefreshToken.userid);
+      if (!user) {
+        throw new ApiError(401, "Invalid refresh token");
+      }
 
-    if (!user) {
-      throw new ApiError(401, "Invalid refresh token");
-    }
-    console.log("user refresh token: ", user.refreshToken);
-    console.log("user : ", user);
+      console.log("user refresh token: ", user.refreshToken);
+      console.log("user : ", user);
 
-    // we also need to verify if the refresh token is active , compare it with the one stored in DB
-    if (incomingRefreshToken !== user?.refreshToken) {
-      throw new ApiError(401, "Refresh token is expired or used");
-    }
+      // Ensure the refresh token matches the one in the database
+      if (incomingRefreshToken !== user.refreshToken) {
+        throw new ApiError(401, "Refresh token is expired or used");
+      }
 
-    const { accessToken, refreshToken: newRefreshToken } =
-      await generateAccessAndRefreshToken(user);
+      // Generate new tokens
+      const { accessToken, refreshToken: newRefreshToken } =
+        await generateAccessAndRefreshToken(user);
 
-    const options = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-    };
+      // Update user refresh token in DB
+      user.refreshToken = newRefreshToken;
+      await user.save();
 
-    console.log(
-      `old refreshToken: ${user.refreshToken} , new refreshToken: ${newRefreshToken}`
-    );
-    res
-      .status(200)
-      .cookie("accessToken", accessToken, options)
-      .cookie("refreshToken", newRefreshToken, options)
-      .json(
-        new ApiResponse(
-          200,
-          {
-            user: accessToken,
-            refreshToken: newRefreshToken,
-          },
-          "generated access and refresh token again successfully"
-        )
+      const options = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+      };
+
+      console.log(
+        `old refreshToken: ${user.refreshToken} , new refreshToken: ${newRefreshToken}`
       );
+
+      res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", newRefreshToken, options)
+        .json(
+          new ApiResponse(
+            200,
+            {
+              accessToken,
+              refreshToken: newRefreshToken,
+            },
+            "Generated new access and refresh tokens successfully"
+          )
+        );
+    } catch (error) {
+      throw new ApiError(401, "Invalid or expired refresh token");
+    }
   }
 );
 
 // ***************************Register User************************
 
-export const register = async (req: Request, res: Response) => {
-  try {
-    const { username, email, password } = req.body;
-    const hashedPassword = await bcrypt.hash(password, 10);
+export const register = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { username, email, password } = req.body;
 
-    const user = await prisma.user.create({
-      data: {
+      // Check if the user already exists
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        res.status(400).json({ error: "Email already in use" });
+      }
+
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Create a new user
+      const newUser = new User({
         username,
         email,
         password: hashedPassword,
-      },
-    });
+      });
 
-    res.json({
-      message: "User registered!",
-      user,
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Registration failed" });
+      // Save to MongoDB
+      await newUser.save();
+
+      res.status(201).json({
+        message: "User registered successfully!",
+        user: {
+          id: newUser._id,
+          username: newUser.username,
+          email: newUser.email,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Registration failed" });
+    }
   }
-};
+);
 
 // ***************************Login User***************************
 
@@ -143,33 +164,37 @@ export const login = asyncHandler(
         res.status(400).json({
           error: "Email and password are required",
         });
+        return;
       }
 
-      const user = await prisma.user.findUnique({
-        where: { email },
-      });
+      // Find user in MongoDB
+      const user = await User.findOne({ email });
       if (!user) {
         throw new ApiError(401, "Invalid credentials");
       }
 
+      // Validate password
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
         throw new ApiError(401, "Invalid Password");
       }
 
-      console.log("user validation complete, proceeding to generate tokens...");
+      console.log("✅ User validation complete, generating tokens...");
+
+      // Generate access and refresh tokens
       const { accessToken, refreshToken } = await generateAccessAndRefreshToken(
         user
       );
-      const loggedInUser = prisma.user.findUnique({
-        where: { email },
-      });
 
-      console.log("Tokens generated, logged in user: ", loggedInUser);
+      console.log("✅ Tokens generated successfully");
+
+      // Update refresh token in the database
+      user.refreshToken = refreshToken;
+      await user.save();
 
       const options = {
         httpOnly: true,
-        secure: process.env.NODE_ENV == "production",
+        secure: process.env.NODE_ENV === "production",
       };
 
       res
@@ -179,14 +204,18 @@ export const login = asyncHandler(
         .json({
           status: 200,
           info: {
-            user: loggedInUser,
+            user: {
+              id: user._id,
+              username: user.username,
+              email: user.email,
+            },
             accessToken,
             refreshToken,
           },
           message: "User Logged in successfully",
         });
     } catch (error) {
-      res.status(500).json({ error: error });
+      res.status(500).json({ error: String(error) });
     }
   }
 );
@@ -199,11 +228,8 @@ export const logout = asyncHandler(
       throw new ApiError(401, "Unauthorized");
     }
 
-    // Update the user's refreshToken to null (Prisma does not support 'undefined')
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { refreshToken: null },
-    });
+    // Set refreshToken to null in MongoDB
+    await User.findByIdAndUpdate(req.user.id, { refreshToken: null });
 
     const options = {
       httpOnly: true,
@@ -222,7 +248,7 @@ export const logout = asyncHandler(
 
 export const getCurrentUser = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    console.log(req.user);
+    console.log("Fetching current user:", req.user);
     res
       .status(200)
       .json(new ApiResponse(200, req.user, "User fetched successfully"));

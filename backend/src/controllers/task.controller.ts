@@ -1,86 +1,69 @@
 import asyncHandler from "express-async-handler";
+import { Request, Response } from "express";
+// import "../types/express"; // Ensure the extended Request type is loaded
 import ApiError from "../utils/ApiError";
 import ApiResponse from "../utils/ApiResponse";
-import { Request, Response, NextFunction } from "express";
-import { PrismaClient, Task, User } from "@prisma/client";
-
-const prisma = new PrismaClient();
-
-//   title       String
-//   description String?
-//   dueDate     String
-//   status      Status @default(PROGRESS)
-//   user_id     Int
-//   user        User   @relation(fields: [user_id], references: [id])
+import Task from "../models/task.model";
+import User from "../models/user.model";
 
 // ****************************Create Task****************************
 
 export const createTask = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { title, description, dueDate, status, isCompleted } = req.body;
-    if (
-      [title, description, dueDate, status].some(
-        (field) => field?.trim() === ""
-      )
-    ) {
-      throw new ApiError(401, "all fields are mandatory");
+
+    // Validate input fields
+    if ([title, description, dueDate, status].some((field) => !field?.trim())) {
+      throw new ApiError(400, "All fields are mandatory");
     }
 
-    // const currentUser = await prisma.user.findUnique({where: {id: user_id}})
     const currentUser = req.user;
-    console.log("current User ", currentUser);
+
     if (!currentUser?.id) {
-      throw new ApiError(401, "user_id for task creation not found");
+      throw new ApiError(401, "User ID for task creation not found");
     }
-    const user_id = currentUser.id;
-    console.log(user_id);
 
     try {
-      const createdTask = await prisma.task.create({
-        data: {
-          title,
-          description,
-          dueDate,
-          status,
-          isCompleted,
-          user_id,
-        },
-        include: {
-          user: true, // This will return the full User object
-        },
-      });
-
-      console.log("after task creation");
-
-      const task = await prisma.task.findUnique({
-        where: { id: createdTask.id },
-      });
-      if (!task) {
-        throw new ApiError(501, "Task was not created");
+      // Check if user exists in DB
+      const user = await User.findById(currentUser.id);
+      if (!user) {
+        throw new ApiError(404, "User not found");
       }
 
-      res.status(201).json(new ApiResponse(201, task, "task created"));
+      // Create task
+      const newTask = new Task({
+        title,
+        description,
+        dueDate,
+        status,
+        isCompleted: isCompleted ?? false,
+        user: currentUser.id,
+      });
+
+      // Save task to MongoDB
+      await newTask.save();
+
+      res
+        .status(201)
+        .json(new ApiResponse(201, newTask, "Task created successfully"));
     } catch (error: any) {
-      throw new ApiError(502, error);
+      throw new ApiError(500, error.message || "Task creation failed");
     }
   }
 );
 
 // *****************************Get All Tasks**************************
+
 export const getAllTasks = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const currentUserId = req.user?.id;
-
+    console.log("current user id fetched");
     try {
-      const allTasks = await prisma.task.findMany({
-        where: { user_id: currentUserId },
-      });
+      // Fetch tasks assigned to the logged-in user
+      const allTasks = await Task.find({ user: currentUserId });
+      console.log(typeof allTasks);
 
-      console.log("all tasks: ", allTasks);
-
-      //   if (!allTasks) {
-      //     throw new ApiError(501, "Error getting tasks");
-      //   }
+      console.log("All tasks: ", allTasks);
 
       if (allTasks.length === 0) {
         res
@@ -88,32 +71,37 @@ export const getAllTasks = asyncHandler(
           .json(
             new ApiResponse(
               202,
-              "No Tasks found for this user, create your first task"
+              allTasks,
+              "No tasks found for this user, create your first task"
             )
           );
+        return;
       }
 
       res
         .status(200)
-        .json(new ApiResponse(201, allTasks, "Tasks fetched successfully"));
-    } catch (error) {
-      throw new ApiError(400, "Something went wrong while fetching tasks");
+        .json(new ApiResponse(200, allTasks, "Tasks fetched successfully"));
+    } catch (error: any) {
+      throw new ApiError(
+        500,
+        error.message || "Something went wrong while fetching tasks"
+      );
     }
   }
 );
 
-// ****************************Get Task By Id**************************
+// **************************** Get Task By ID (Mongoose) *****************************
+
 export const getTaskByID = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
-    const taskId = Number(req.params.taskId);
-    const currentUserId = Number(req.user?.id);
-    console.log("current user :", currentUserId);
+    const { taskId } = req.params;
+    const currentUserId = req.user?.id;
+    console.log("Current user:", currentUserId);
+
     try {
-      const taskFound = await prisma.task.findFirst({
-        where: {
-          id: taskId,
-          user_id: currentUserId,
-        },
+      const taskFound = await Task.findOne({
+        _id: taskId,
+        user: currentUserId,
       });
 
       if (!taskFound) {
@@ -124,110 +112,119 @@ export const getTaskByID = asyncHandler(
         .status(200)
         .json(new ApiResponse(200, taskFound, "Task found successfully"));
     } catch (error: any) {
-      throw new ApiError(401, error);
+      throw new ApiError(500, error.message || "Error retrieving task");
     }
   }
 );
-// ****************************Update Task(Incomplete)*****************************
+
+// ****************************Update Task (Mongoose)*****************************
 export const updateTask = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.taskId;
     const { title, description, dueDate, status, isCompleted } = req.body;
-    if ([title, description, dueDate].some((field) => field?.trim() == "")) {
+
+    if ([title, description, dueDate].some((field) => field?.trim() === "")) {
       throw new ApiError(400, "Fields cannot be empty");
     }
     if (!taskId) {
-      throw new ApiError(400, "Task id is required");
+      throw new ApiError(400, "Task ID is required");
     }
 
     const currentUserId = req.user?.id;
 
-    const data = { title, description, dueDate, status, isCompleted };
-
     try {
-      const updatedTask = await prisma.task.update({
-        where: {
-          id: Number(taskId), // Ensure task ID is correctly passed
-          user_id: Number(currentUserId), // Ensure task belongs to the logged-in user
-        },
-        data: data,
-        select: {
-          id: true,
-          user_id: true,
-          status: true,
-          isCompleted: true,
-        },
+      // Find the task to check ownership before updating
+      const existingTask = await Task.findOne({
+        _id: taskId,
+        user: currentUserId,
       });
 
-      const newlyUpdatedTask = await prisma.task.findUnique({
-        where: { id: updatedTask.id },
-      });
+      if (!existingTask) {
+        throw new ApiError(
+          404,
+          "Task not found or you do not have permission to update it"
+        );
+      }
 
-      if (!newlyUpdatedTask) {
+      // Update the task
+      const updatedTask = await Task.findByIdAndUpdate(
+        taskId,
+        { title, description, dueDate, status, isCompleted },
+        { new: true } // Return the updated document
+      );
+
+      if (!updatedTask) {
         throw new ApiError(400, "Task update failed");
       }
-      console.log("Updated Task:", newlyUpdatedTask);
+
+      console.log("Updated Task:", updatedTask);
 
       res
         .status(200)
-        .json(new ApiResponse(200, updateTask, "Task Updated successfully !"));
+        .json(new ApiResponse(200, updatedTask, "Task updated successfully!"));
     } catch (error: any) {
-      throw new ApiError(400, error);
+      throw new ApiError(500, error.message || "Error updating task");
     }
   }
 );
 
-// ****************************Delete Task*****************************
+// ****************************Delete Task (Mongoose)*****************************
 export const deleteTask = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { taskId } = req.params;
-    console.log("task Id:", taskId);
+    console.log("Task ID:", taskId);
 
     try {
-      const taskDeleted = await prisma.task.delete({
-        where: { id: Number(taskId) },
-      });
+      const taskDeleted = await Task.findByIdAndDelete(taskId);
+
       if (!taskDeleted) {
-        throw new ApiError(403, "Error in deleting the task");
+        throw new ApiError(404, "Task not found or already deleted");
       }
 
-      res.status(200).json(new ApiResponse(200, "Task Deleted !"));
+      res
+        .status(200)
+        .json(new ApiResponse(200, {}, "Task deleted successfully!"));
     } catch (error: any) {
-      throw new ApiError(404, "Task to delete does not exist", error);
+      throw new ApiError(500, error.message || "Error deleting task");
     }
   }
 );
 
-// ****************************
-export const ChangeStatus = asyncHandler(
+// ****************************Change Task Status (Mongoose)*****************************
+export const changeTaskStatus = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const { taskId, status } = req.body;
     const currentUserId = req.user?.id;
 
     try {
-      const task = await prisma.task.findFirst({
-        where: {
-          id: Number(taskId),
-          user_id: Number(currentUserId),
-        },
-      });
+      // Find the task first
+      const task = await Task.findOne({ _id: taskId, user: currentUserId });
 
-      prisma.task.update({
-        where: {
-          id: taskId, // Ensure task ID is correctly passed
-          user_id: currentUserId, // Ensure task belongs to the logged-in user
-        },
-        data: {
-          status: status, // Update status
-        },
-        select: {
-          id: true,
-          user_id: true,
-          status: true,
-        },
-      });
+      if (!task) {
+        throw new ApiError(
+          404,
+          "Task not found or you do not have permission to update it"
+        );
+      }
 
-      res.status(200).json(new ApiResponse(200, ""));
-    } catch (error) {}
+      // Update the task's status
+      const updatedTask = await Task.findByIdAndUpdate(
+        taskId,
+        { status },
+        { new: true, select: "id user status" } // Select only necessary fields
+      );
+
+      if (!updatedTask) {
+        throw new ApiError(500, "Failed to update task status");
+      }
+
+      res
+        .status(200)
+        .json(
+          new ApiResponse(200, updatedTask, "Task status updated successfully!")
+        );
+    } catch (error: any) {
+      throw new ApiError(500, error.message || "Error updating task status");
+    }
   }
 );
