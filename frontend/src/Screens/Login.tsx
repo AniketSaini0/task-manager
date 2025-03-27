@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LoginProps, ValidationErrors } from "../types/index";
+
 export default function Login({ onLogin }: LoginProps) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
@@ -60,7 +61,7 @@ export default function Login({ onLogin }: LoginProps) {
       console.log("Form submitted successfully");
     }
 
-    onLogin();
+    onLogin(email);
   };
   // const handleSubmit = (e: React.FormEvent) => {
   //   e.preventDefault();

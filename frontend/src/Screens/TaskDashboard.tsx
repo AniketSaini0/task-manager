@@ -28,22 +28,23 @@ export default function TaskDashboard({
       });
 
       const data = await response.json();
-      console.log(userEmail);
+      console.log("email", userEmail);
       if (response.ok) {
         console.log("Tasks fetched", data);
         // Ensureing data is an array of tasks
         if (Array.isArray(data.data)) {
           onLoadTasks(data.data);
         } else {
-          console.error("Invalid tasks data format:", data);
+          console.log("Create Tasks to view", data);
         }
       } else {
         console.error("tasks fetched failed:", data.message);
       }
+      console.log("tasks:", tasks);
     } catch (error) {
       console.error("Error fetching:", error);
     }
-  }, [onLoadTasks]);
+  }, [onLoadTasks, userEmail, tasks]);
 
   useEffect(() => {
     loadTasks();
@@ -122,16 +123,23 @@ export default function TaskDashboard({
           />
         )}
         <div className="space-y-4">
-          {tasks.map((task) => (
-            <TaskItem
-              key={task.id}
-              task={task}
-              onEdit={() => setEditTask(task)}
-              onDelete={() => onDeleteTask(task.id)}
-              onToggleCompletion={() => onToggleTaskCompletion(task.id)}
-              reloadTasks={loadTasks}
-            />
-          ))}
+          {tasks.length !== 0 ? (
+            tasks.map((task) => (
+              <TaskItem
+                key={task.id}
+                task={task}
+                onEdit={() => setEditTask(task)}
+                onDelete={() => onDeleteTask(task.id)}
+                onToggleCompletion={() => onToggleTaskCompletion(task.id)}
+                reloadTasks={loadTasks}
+              />
+            ))
+          ) : (
+            <div className="min-h-[30vh] flex flex-col justify-center items-center">
+              <h2>No Tasks Exists</h2>
+              <p>Create new task in your task list</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
