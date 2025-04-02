@@ -1,10 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LoginProps, ValidationErrors } from "../types/index";
+// below error : Module '"../types/index"' has no exported member 'LoginProps'
+import { ValidationErrors } from "../types/index";
 import { motion, AnimatePresence } from "framer-motion";
+import { useDispatch } from "react-redux";
+import { loginSuccess } from "../redux/slices/auth.slice"; // Import Redux action
 
-export default function Auth({ onLogin }: LoginProps) {
+export default function Auth() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
+
   const [isLoginForm, setIsLoginForm] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,8 +31,8 @@ export default function Auth({ onLogin }: LoginProps) {
       newErrors.email = "Invalid email address";
 
     if (!password) newErrors.password = "Password is required";
-    else if (password.length < 6)
-      newErrors.password = "Password must be at least 6 characters";
+    // else if (password.length < 6)
+    //   newErrors.password = "Password must be at least 6 characters";
 
     if (!isLoginForm && password !== confirmPassword)
       newErrors.confirmPassword = "Passwords do not match";
@@ -38,38 +43,47 @@ export default function Auth({ onLogin }: LoginProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) {
-      const url = isLoginForm
-        ? "http://localhost:8000/api/auth/login"
-        : "http://localhost:8000/api/auth/register";
-      const body = JSON.stringify(
-        isLoginForm ? { email, password } : { email, password, confirmPassword }
-      );
+    if (!validateForm()) return;
 
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body,
-        });
+    const url = isLoginForm
+      ? "http://localhost:8001/api/auth/login"
+      : "http://localhost:8001/api/auth/register";
+    const body = JSON.stringify(
+      isLoginForm ? { email, password } : { email, password, confirmPassword }
+    );
 
-        const data = await response.json();
-        if (response.ok) {
-          console.log(
-            `${isLoginForm ? "Login" : "Registration"} successful`,
-            data
-          );
-          const userEmail = data.info?.user?.spec?.args?.where?.email;
-          onLogin(userEmail);
-          if (isLoginForm) navigate("/dashboard");
-          else toggleForm();
-        } else {
-          console.error("Error:", data.message);
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        console.log(
+          `${isLoginForm ? "Login" : "Registration"} successful`,
+          data
+        );
+
+        const userEmail = data.info?.user?.email; // Ensure correct extraction
+        if (userEmail) {
+          dispatch(loginSuccess(userEmail)); // ✅ Update Redux state
         }
-      } catch (error) {
-        console.error("Error:", error);
+
+        if (isLoginForm) {
+          dispatch(loginSuccess(userEmail)); // ✅ Update Redux
+          navigate("/"); // Redirect to dashboard
+        } else {
+          console.log("Registration successful, now you can login");
+          toggleForm(); // Switch to login form after successful registration
+        }
+      } else {
+        console.error("Error:", data.message);
       }
+    } catch (error) {
+      console.error("Error:", error);
     }
   };
 
