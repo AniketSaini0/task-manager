@@ -1,6 +1,5 @@
 import asyncHandler from "express-async-handler";
 import { Request, Response } from "express";
-// import "../types/express"; // Ensure the extended Request type is loaded
 import ApiError from "../utils/ApiError";
 import ApiResponse from "../utils/ApiResponse";
 import Task from "../models/task.model";
@@ -164,6 +163,40 @@ export const updateTask = asyncHandler(
         .json(new ApiResponse(200, updatedTask, "Task updated successfully!"));
     } catch (error: any) {
       throw new ApiError(500, error.message || "Error updating task");
+    }
+  }
+);
+
+// ****************************Toggle Task Status (Mongoose)*****************************
+export const toggleTaskCompletion = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const taskId = req.params.taskId;
+
+    if (!taskId) {
+      throw new ApiError(400, "Task ID is required");
+    }
+
+    const currentUserId = req.user?.id;
+
+    try {
+      // Find the task
+      const task = await Task.findOne({ _id: taskId, user: currentUserId });
+
+      if (!task) {
+        throw new ApiError(
+          404,
+          "Task not found or you do not have permission to update it"
+        );
+      }
+
+      // Toggle `isCompleted` field
+      task.isCompleted = !task.isCompleted;
+
+      await task.save(); // Save the updated task
+
+      res.status(200).json(new ApiResponse(200, task, "Task status updated!"));
+    } catch (error: any) {
+      throw new ApiError(500, error.message || "Error toggling task status");
     }
   }
 );
