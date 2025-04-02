@@ -249,6 +249,13 @@ export const logout = asyncHandler(
 export const getCurrentUser = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     console.log("Fetching current user:", req.user);
+
+    if (!req.user) {
+      res
+        .status(200)
+        .json(new ApiResponse(200, null, "User not authenticated"));
+    }
+
     res
       .status(200)
       .json(new ApiResponse(200, req.user, "User fetched successfully"));
