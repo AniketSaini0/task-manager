@@ -1,7 +1,7 @@
 export interface ValidationErrors {
-  email?: string; // Optional property
-  password?: string; // Optional property
-  confirmPassword?: string; // Optional property
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
 }
 
 export enum StatusEnum {
@@ -11,7 +11,7 @@ export enum StatusEnum {
 }
 
 export interface Task {
-  id: string;
+  _id: string;
   title: string;
   description: string;
   dueDate: string;
@@ -29,29 +29,12 @@ export interface RegisterProps {
   password?: string;
 }
 
-export interface TaskDashboardProps {
-  tasks: Task[];
-  onLoadTasks: (task: Task[]) => void;
-  onAddTask: (task: Task) => void;
-  onEditTask: (task: Task) => void;
-  onDeleteTask: (taskId: string) => void;
-  onToggleTaskCompletion: (taskId: string) => void;
-  onLogout: () => void;
-  userEmail: string;
-}
-
 export interface TaskFormProps {
   task?: Task;
-  onAddTask?: (task: Task) => void;
-  onEditTask?: (task: Task) => void;
+  onSubmit: (task: Task) => void;
   onCancel: () => void;
-  reloadTasks?: () => void;
 }
 
 export interface TaskItemProps {
   task: Task;
-  onEdit: () => void;
-  onDelete: () => void;
-  onToggleCompletion: () => void;
-  reloadTasks: () => void;
 }
