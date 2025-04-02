@@ -3,14 +3,7 @@ import jwt from "jsonwebtoken";
 import asyncHandler from "express-async-handler";
 import ApiError from "../utils/ApiError";
 import User from "../models/user.model";
-
-// declare global {
-//   namespace Express {
-//     interface Request {
-//       user?: IUser; // Modify this based on your User type/interface
-//     }
-//   }
-// }
+import ApiResponse from "../utils/ApiResponse";
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET as string;
 
@@ -28,8 +21,9 @@ export const authMiddleware = asyncHandler(
       token = req.cookies.accessToken; // Extract token from cookies
     }
 
+    // here if the request is unauthorized, i am throwing an error
     if (!token) {
-      throw new ApiError(401, "Unauthorized - No token provided");
+      return next(new ApiError(401, "Unauthorized - No token provided"));
     }
 
     try {
@@ -39,14 +33,12 @@ export const authMiddleware = asyncHandler(
       const user = await User.findById(decoded.userId).select("-password"); // Exclude password
 
       if (!user) {
-        throw new ApiError(401, "Unauthorized - Invalid token");
+        return next(new ApiError(401, "Unauthorized - Invalid token"));
       }
-
       console.log("user: ", user);
-      // ...user.toObject(),
 
       req.user = { id: user._id.toString(), email: user.email.toString() };
-      next();
+      next(); // calling the next
     } catch (error) {
       throw new ApiError(403, "Forbidden - Token verification failed");
     }
