@@ -4,6 +4,7 @@ import morgan from "morgan";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import logger from "./utils/logger";
+import errorHandler from "./utils/errorHandler";
 
 import authRoutes from "./routes/auth.routes";
 import taskRoutes from "./routes/task.routes";
@@ -58,6 +59,9 @@ app.use(
 app.use("/api/healthCheck", authRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tasks", taskRoutes);
+
+// Error handler should be the last middleware
+app.use(errorHandler);
 
 // const PORT = process.env.PORT;
 // app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
