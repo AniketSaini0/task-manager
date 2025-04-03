@@ -2,14 +2,11 @@ import { useState } from "react";
 import { Task, TaskFormProps, StatusEnum } from "../types/index";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useDispatch } from "react-redux";
+import { AppDispatch } from "../redux/store";
+import { addTask, editTask } from "../redux/slices/task.slice";
 
-export default function TaskForm({
-  task,
-  onAddTask,
-  onEditTask,
-  onCancel,
-  reloadTasks,
-}: TaskFormProps) {
+export default function TaskForm({ task, onCancel }: TaskFormProps) {
   const [title, setTitle] = useState(task?.title || "");
   const [description, setDescription] = useState(task?.description || "");
   const [dueDate, setDueDate] = useState(task?.dueDate || "");
@@ -17,58 +14,55 @@ export default function TaskForm({
     task?.status || StatusEnum.TODO
   );
 
+  const dispatch = useDispatch<AppDispatch>();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newTask: Omit<Task, "id"> = {
-      title,
-      description,
-      dueDate,
-      status: taskStatus,
-      isCompleted: taskStatus === StatusEnum.COMPLETED,
-    };
 
     try {
-      let response;
       if (task) {
-        // Send POST request to the backend with credentials
-        response = await fetch(`http://localhost:8000/api/tasks/${task.id}`, {
-          method: "PATCH",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(newTask),
-        });
-
-        // Handle success
-        if (response.ok) {
-          toast.success("Task Updated!");
-          const UpdatedTask = await response.json();
-          onEditTask?.(UpdatedTask);
-          reloadTasks?.();
-        }
+        // If editing, include `_id`
+        // const updatedTask: Task = {
+        //   _id: task._id, // Ensure `_id` is passed
+        //   title,
+        //   description,
+        //   dueDate,
+        //   status: taskStatus,
+        //   isCompleted: taskStatus === StatusEnum.COMPLETED,
+        // };
+        const updatedFields: Partial<Task> = {};
+        updatedFields._id = task._id;
+        if (title !== task.title) updatedFields.title = title;
+        if (description !== task.description)
+          updatedFields.description = description;
+        if (dueDate !== task.dueDate) updatedFields.dueDate = dueDate;
+        if (taskStatus !== task.status) updatedFields.status = taskStatus;
+        updatedFields.isCompleted = taskStatus === StatusEnum.COMPLETED;
+        console.log("This is updated fields ", updatedFields);
+        // If task exists, we are editing
+        await dispatch(editTask(updatedFields)).unwrap();
+        toast.success("Task Updated!");
       } else {
-        // Send POST request to the backend with credentials
-        response = await fetch(`http://localhost:8000/api/tasks/create-task`, {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(newTask),
-        });
+        // If adding a new task, omit `_id`
+        const newTask: Omit<Task, "_id"> = {
+          title,
+          description,
+          dueDate,
+          status: taskStatus,
+          isCompleted: taskStatus === StatusEnum.COMPLETED,
+        };
 
-        // Handle success
-        if (response.ok) {
-          toast.success("Task Created!");
-          const createdTask = await response.json();
-          onAddTask?.(createdTask);
-          reloadTasks?.();
-        }
+        const response = await dispatch(addTask(newTask)).unwrap(); // 🚀 Get `taskId` from backend
+        toast.success("Task Created!");
+
+        console.log("Created Task:", response); // Debugging: Ensure the `id` is coming from backend
       }
-    } catch {
-      // Handle error
+    } catch (error) {
+      console.error("Task creation error:", error);
+      toast.error("Failed to create task!");
     }
+
+    onCancel(); // Close the form after submission
   };
 
   return (
