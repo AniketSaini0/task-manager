@@ -120,11 +120,11 @@ export const getTaskByID = asyncHandler(
 export const updateTask = asyncHandler(
   async (req: Request, res: Response): Promise<void> => {
     const taskId = req.params.taskId;
+    // const updates = req.body;
     const { title, description, dueDate, status, isCompleted } = req.body;
 
-    if ([title, description, dueDate].some((field) => field?.trim() === "")) {
-      throw new ApiError(400, "Fields cannot be empty");
-    }
+    // console.log("Received fields, ", updates);
+
     if (!taskId) {
       throw new ApiError(400, "Task ID is required");
     }
@@ -145,18 +145,47 @@ export const updateTask = asyncHandler(
         );
       }
 
-      // Update the task
-      const updatedTask = await Task.findByIdAndUpdate(
-        taskId,
-        { title, description, dueDate, status, isCompleted },
-        { new: true } // Return the updated document
-      );
+      // **** { Method 1 of filtering out the non-undefined values for updating : takes time 400 ms}
+      // // Filter out undefined fields before updating
+      // const filteredUpdates = Object.fromEntries(
+      //   Object.entries(updates).filter(([_, value]) => value !== undefined)
+      // );
+
+      // if (Object.keys(filteredUpdates).length === 0) {
+      //   throw new ApiError(400, "No valid fields provided for update");
+      // }
+
+      // // Update only the provided fields
+      // const updatedTask = await Task.findByIdAndUpdate(
+      //   taskId,
+      //   filteredUpdates,
+      //   { new: true }
+      // );
+
+      // ***{Method 2 of filtering out the non-undefined values take time : 300ms}
+      // Create an object with only defined values
+      const fieldsToUpdate: Record<string, any> = {};
+
+      if (title !== undefined) fieldsToUpdate.title = title;
+      if (description !== undefined) fieldsToUpdate.description = description;
+      if (dueDate !== undefined) fieldsToUpdate.dueDate = dueDate;
+      if (status !== undefined) fieldsToUpdate.status = status;
+      if (isCompleted !== undefined) fieldsToUpdate.isCompleted = isCompleted;
+
+      if (Object.keys(fieldsToUpdate).length === 0) {
+        throw new ApiError(400, "No valid fields provided for update");
+      }
+
+      // Perform the update with the filtered object
+      const updatedTask = await Task.findByIdAndUpdate(taskId, fieldsToUpdate, {
+        new: true,
+      });
 
       if (!updatedTask) {
         throw new ApiError(400, "Task update failed");
       }
 
-      console.log("Updated Task:", updatedTask);
+      // console.log("Updated Task:", updatedTask);
 
       res
         .status(200)
