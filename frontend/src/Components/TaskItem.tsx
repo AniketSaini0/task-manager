@@ -1,91 +1,91 @@
-import { TaskItemProps } from "../types/index";
+import { useDispatch } from "react-redux";
+import { useState } from "react";
+import { deleteTask, toggleTaskCompletion } from "../redux/slices/task.slice";
+import { AppDispatch } from "../redux/store";
+import { TaskItemProps } from "../types";
 import { toast } from "react-toastify";
+import TaskForm from "../Components/TaskForm";
 
-export default function TaskItem({
-  task,
-  onEdit,
-  onDelete,
-  onToggleCompletion,
-  reloadTasks,
-}: TaskItemProps) {
-  const handleDelete = async () => {
-    try {
-      let response;
-      if (task) {
-        // Send POST request to the backend with credentials
-        response = await fetch(`http://localhost:8000/api/tasks/${task.id}`, {
-          method: "DELETE",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        });
+// onDelete gives error of declaring but not used
+export default function TaskItem({ task }: TaskItemProps) {
+  const dispatch = useDispatch<AppDispatch>();
 
-        const data = await response.json();
-        // Handle success
-        if (response.ok) {
-          toast.success("Task Updated!");
-          reloadTasks?.();
-          onDelete();
-        } else {
-          console.log(data.message);
-        }
-      }
-    } catch {
-      // Handle error
-    }
+  const [isEditing, setIsEditing] = useState(false);
+
+  // the same method is in TashDashboard, which makes it redundent.
+  // const handleEdit = (taskId: string) => {
+  //   dispatch(editTask(taskId));
+  //   toast.success("Task Deleted!");
+  // };
+
+  const handleDelete = (taskId: string) => {
+    dispatch(deleteTask(taskId));
+    toast.success("Task Deleted!");
   };
+
+  const handleToggleCompletion = (taskId: string) => {
+    dispatch(toggleTaskCompletion(taskId));
+  };
+
   return (
     <div className="bg-white p-4 rounded-lg shadow-md">
-      <div className="flex justify-between items-start">
-        <div className="flex items-center space-x-2">
-          <input
-            type="checkbox"
-            checked={task.isCompleted}
-            onChange={onToggleCompletion}
-            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-          />
-          <div>
-            <h3
-              className={`text-lg font-medium ${
-                task.isCompleted
-                  ? "line-through text-gray-500"
-                  : "text-gray-900"
-              }`}
+      {isEditing ? (
+        <TaskForm
+          task={task}
+          onSubmit={() => setIsEditing(false)}
+          onCancel={() => setIsEditing(false)}
+        />
+      ) : (
+        <div className="flex justify-between items-start">
+          <div className="flex items-center space-x-2">
+            <input
+              type="checkbox"
+              checked={task.isCompleted}
+              onChange={() => handleToggleCompletion(task._id)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <div>
+              <h3
+                className={`text-lg font-medium ${
+                  task.isCompleted
+                    ? "line-through text-gray-500"
+                    : "text-gray-900"
+                }`}
+              >
+                {task.title}
+              </h3>
+              <p
+                className={`text-sm text-gray-600 ${
+                  task.isCompleted ? "line-through" : ""
+                }`}
+              >
+                {task.description}
+              </p>
+              <p
+                className={`text-md text-gray-600 ${
+                  task.isCompleted ? "line-through" : ""
+                }`}
+              >
+                Status: {task.status}
+              </p>
+            </div>
+          </div>
+          <div className="flex space-x-2">
+            <button
+              className="text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+              onClick={() => setIsEditing(true)} // On clicking , this should trigger the visibility of form with the data of current task
             >
-              {task.title}
-            </h3>
-            <p
-              className={`text-sm text-gray-600 ${
-                task.isCompleted ? "line-through" : ""
-              }`}
+              Edit
+            </button>
+            <button
+              onClick={() => handleDelete(task._id)}
+              className="text-red-600 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
             >
-              {task.description}
-            </p>
-            <p
-              className={`text-md text-gray-600 ${
-                task.isCompleted ? "line-through" : ""
-              }`}
-            >
-              status: {task.status}
-            </p>
+              Delete
+            </button>
           </div>
         </div>
-        <div className="flex space-x-2">
-          <button
-            onClick={onEdit}
-            className="text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            Edit
-          </button>
-          <button
-            onClick={() => handleDelete()}
-            className="text-red-600 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-          >
-            Delete
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
