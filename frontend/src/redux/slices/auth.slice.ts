@@ -20,9 +20,11 @@ export const fetchAuthStatus = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       const user = await checkAuth(); // This calls your auth.service
-      return user;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
+      if (user) return user;
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        return rejectWithValue(error.message);
+      } else return rejectWithValue("An unknown error occurred");
     }
   }
 );
@@ -47,8 +49,13 @@ const authSlice = createSlice({
         state.loading = true;
       })
       .addCase(fetchAuthStatus.fulfilled, (state, action) => {
-        state.isAuthenticated = true;
-        state.loggedUserEmail = action.payload;
+        if (action.payload) {
+          state.isAuthenticated = true;
+          state.loggedUserEmail = action.payload.email;
+        } else {
+          state.isAuthenticated = false; // Ensure it resets properly
+          state.loggedUserEmail = null;
+        }
         state.loading = false;
       })
       .addCase(fetchAuthStatus.rejected, (state) => {
