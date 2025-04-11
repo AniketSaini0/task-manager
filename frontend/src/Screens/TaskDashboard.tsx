@@ -1,88 +1,33 @@
-import { useCallback, useEffect, useState } from "react";
-import { Task, TaskDashboardProps } from "../types/index";
+import { useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState, AppDispatch } from "../redux/store";
+import { addTask, editTask } from "../redux/slices/task.slice";
+import { logout } from "../redux/slices/auth.slice";
 import TaskForm from "../Components/TaskForm";
 import TaskItem from "../Components/TaskItem";
+import { Task } from "../types";
 
-export default function TaskDashboard({
-  tasks,
-  onLoadTasks,
-  onAddTask,
-  onEditTask,
-  onDeleteTask,
-  onToggleTaskCompletion,
-  onLogout,
-  userEmail,
-}: TaskDashboardProps) {
-  const [showForm, setShowForm] = useState(false);
-  const [editTask, setEditTask] = useState<Task | null>(null);
-  // const [tasks, setTasks] = useState<Task[]>([]);
+export default function TaskDashboard() {
+  const dispatch = useDispatch<AppDispatch>();
+  const { tasks, loading } = useSelector((state: RootState) => state.tasks);
+  const [showForm, setShowForm] = useState(false); // this state decides if the TaskForm should be visible or not
+  const [editTaskData, setEditTaskData] = useState<Task | null>(null); // this takes the data
+  const { loggedUserEmail } = useSelector((state: RootState) => state.auth);
 
-  const loadTasks = useCallback(async () => {
-    try {
-      const response = await fetch("http://localhost:8000/api/tasks", {
-        method: "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await response.json();
-      console.log("email", userEmail);
-      if (response.ok) {
-        console.log("Tasks fetched", data);
-        // Ensureing data is an array of tasks
-        if (Array.isArray(data.data)) {
-          onLoadTasks(data.data);
-        } else {
-          console.log("Create Tasks to view", data);
-        }
-      } else {
-        console.error("tasks fetched failed:", data.message);
-      }
-      console.log("tasks:", tasks);
-    } catch (error) {
-      console.error("Error fetching:", error);
-    }
-  }, [onLoadTasks, userEmail, tasks]);
-
-  useEffect(() => {
-    loadTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
+  // Handle Add Task
   const handleAddTask = (task: Task) => {
-    onAddTask(task);
+    dispatch(addTask(task));
     setShowForm(false);
   };
-
-  const handleEditTask = async (task: Task) => {
-    onEditTask(task);
-    setEditTask(null);
+  // Handle Edit Task
+  const handleEditTask = (task: Task) => {
+    dispatch(editTask(task));
+    setEditTaskData(null);
   };
 
-  const handleLogout = async () => {
-    try {
-      const response = await fetch("http://localhost:8000/api/auth/logout", {
-        method: "POST",
-        credentials: "include", // ✅ Ensures cookies are sent with request
-      });
-
-      if (response.ok) {
-        console.log("Logout successful");
-
-        document.cookie =
-          "accessToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-        document.cookie =
-          "refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-
-        onLogout(); // ✅ Update app state to reflect logged-out status
-      } else {
-        console.error("Logout failed");
-      }
-    } catch (error) {
-      console.error("Error logging out:", error);
-    }
+  // Handle Logout
+  const handleLogout = () => {
+    dispatch(logout());
   };
 
   return (
@@ -92,10 +37,10 @@ export default function TaskDashboard({
           <h1 className="text-2xl font-bold">Task Dashboard</h1>
           <div className="flex justify-between items-center space-x-2">
             <h2 className="bg-gray-700 text-white px-3 py-1 rounded-lg text-sm font-medium shadow-md border border-gray-600">
-              {userEmail}
+              {loggedUserEmail}
             </h2>
             <button
-              onClick={() => handleLogout()}
+              onClick={handleLogout}
               className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
             >
               Logout
@@ -110,34 +55,26 @@ export default function TaskDashboard({
         </button>
         {showForm && (
           <TaskForm
-            onAddTask={handleAddTask}
+            onSubmit={handleAddTask}
             onCancel={() => setShowForm(false)}
           />
         )}
-        {editTask && (
+        {editTaskData && (
           <TaskForm
-            task={editTask}
-            onEditTask={handleEditTask}
-            onCancel={() => setEditTask(null)}
-            reloadTasks={loadTasks} // ✅ Pass the function
+            task={editTaskData}
+            onSubmit={handleEditTask}
+            onCancel={() => setEditTaskData(null)}
           />
         )}
         <div className="space-y-4">
-          {tasks.length !== 0 ? (
-            tasks.map((task) => (
-              <TaskItem
-                key={task.id}
-                task={task}
-                onEdit={() => setEditTask(task)}
-                onDelete={() => onDeleteTask(task.id)}
-                onToggleCompletion={() => onToggleTaskCompletion(task.id)}
-                reloadTasks={loadTasks}
-              />
-            ))
+          {loading ? (
+            <p className="flex justify-center mt-10">Loading tasks...</p>
+          ) : tasks.length !== 0 ? (
+            tasks.map((task) => <TaskItem key={task._id} task={task} />)
           ) : (
             <div className="min-h-[30vh] flex flex-col justify-center items-center">
-              <h2>No Tasks Exists</h2>
-              <p>Create new task in your task list</p>
+              <h2>No Tasks Exist</h2>
+              <p>Create a new task in your task list</p>
             </div>
           )}
         </div>
